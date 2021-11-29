@@ -1,0 +1,10 @@
+{
+  "name": "com.enred.androidhelper",
+  "displayName": "Android Build Helper",
+  "description": "",
+  "version": "1.0.0",
+  "unity": "2018.3",
+  "license": "MIT",
+  "dependencies": {
+  }
+}
