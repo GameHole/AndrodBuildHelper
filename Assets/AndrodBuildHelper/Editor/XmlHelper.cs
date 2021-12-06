@@ -1,13 +1,34 @@
 ﻿using System.IO;
 using System.Xml;
 using UnityEditor;
-
+public enum MainManifestType
+{
+    Luncher, Main
+}
 public static class XmlHelper 
 {
-    public static readonly string plgpath= "Assets/Plugins/Android/AndroidManifest.xml";
-    public static XmlDocument GetAndroidManifest()
+    static MainManifestType currentOpenedType;
+    public static string plgpath=> $"Assets/Plugins/Android/{GetPluginName(currentOpenedType)}.xml";
+    static string GetTempFileName(MainManifestType type)
     {
-        string tmpFile = EditorApplication.applicationContentsPath + "/PlaybackEngines/AndroidPlayer/Apk/AndroidManifest.xml";
+#if UNITY_2019_3_OR_NEWER
+        return type == MainManifestType.Luncher ? "LauncherManifest" : "UnityManifest";
+#else
+        return "AndroidManifest";
+#endif
+    }
+    static string GetPluginName(MainManifestType type)
+    {
+#if UNITY_2019_3_OR_NEWER
+        return type == MainManifestType.Luncher ? "LauncherManifest" : "AndroidManifest";
+#else
+        return "AndroidManifest";
+#endif
+    }
+    public static XmlDocument GetAndroidManifest(MainManifestType type = MainManifestType.Main)
+    {
+        currentOpenedType = type;
+        string tmpFile = EditorApplication.applicationContentsPath + $"/PlaybackEngines/AndroidPlayer/Apk/{GetTempFileName(type)}.xml";
         if (!Directory.Exists("Assets/Plugins/Android"))
             Directory.CreateDirectory("Assets/Plugins/Android");
         if (!File.Exists(plgpath))
@@ -37,6 +58,13 @@ public static class XmlHelper
             var ele = xdoc.CreateElement("uses-permission");
             ele.Attributes.Append(ele.CreateAttribute("name", value));
             manifestNode.AppendChild(ele);
+        }
+    }
+    public static void SetPermissions(this XmlDocument xdoc, params string[] values)
+    {
+        foreach (var item in values)
+        {
+            SetPermission(xdoc,item);
         }
     }
     public static void RemovePermission(this XmlDocument xdoc, string value)
@@ -76,7 +104,7 @@ public static class XmlHelper
             return null;
         }
     }
-    public static XmlNode FindNode(this XmlDocument xmlDoc, string xpath, string attributeName, string attributeValue)
+    public static XmlNode FindNode(this XmlNode xmlDoc, string xpath, string attributeName, string attributeValue)
     {
         XmlNodeList nodes = xmlDoc.SelectNodes(xpath);
         //Debug.Log(nodes.Count);

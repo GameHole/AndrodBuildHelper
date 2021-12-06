@@ -5,7 +5,7 @@ using System.IO;
 public static class AssetHelper
 {
     static string _basicPath = "Assets/Resources";
-    public static T CreateAsset<T>(string basicPath=null) where T : AScriptableObject
+    public static T CreateOrGetAsset<T>(string basicPath=null) where T : AScriptableObject
     {
         var res = ScriptableObject.CreateInstance<T>();
         if (string.IsNullOrEmpty(basicPath))
@@ -13,7 +13,7 @@ public static class AssetHelper
         string path = $"{basicPath}/{res.filePath}.asset";
         if (File.Exists(path))
         {
-            return Resources.Load<T>(path);
+            return AssetDatabase.LoadAssetAtPath<T>(path);
         }
         string dir = Path.GetDirectoryName(path);
         if (!Directory.Exists(dir))
@@ -21,20 +21,20 @@ public static class AssetHelper
         AssetDatabase.CreateAsset(res, path);
         return res;
     }
-    public static T CreateOrLoadAsset<T>(string path) where T : ScriptableObject
-    {
-        var res = ScriptableObject.CreateInstance<T>();
-        //string path = "Assets/Resources/" + res.filePath + ".asset";
-        if (File.Exists(path))
-        {
-            return Resources.Load<T>(path);
-        }
-        string dir = Path.GetDirectoryName(path);
-        if (!Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
-        AssetDatabase.CreateAsset(res, path);
-        return res;
-    }
+    //public static T CreateOrLoadAsset<T>(string path) where T : ScriptableObject
+    //{
+    //    var res = ScriptableObject.CreateInstance<T>();
+    //    //string path = "Assets/Resources/" + res.filePath + ".asset";
+    //    if (File.Exists(path))
+    //    {
+    //        return Resources.Load<T>(path);
+    //    }
+    //    string dir = Path.GetDirectoryName(path);
+    //    if (!Directory.Exists(dir))
+    //        Directory.CreateDirectory(dir);
+    //    AssetDatabase.CreateAsset(res, path);
+    //    return res;
+    //}
     public static bool Exists<T>() where T : AScriptableObject
     {
         var res = ScriptableObject.CreateInstance<T>();

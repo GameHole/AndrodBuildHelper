@@ -1,0 +1,29 @@
+package com.api.unityactivityinterface;
+
+import android.app.Application;
+
+import java.util.ArrayList;
+
+public class CustomUnityApplication extends Application
+{
+    ArrayList<IOnAppCreate> _ionappcreate = new ArrayList<IOnAppCreate>();
+    ArrayList<IOnAppTerminate> _ionappterminate = new ArrayList<IOnAppTerminate>();
+    public CustomUnityApplication(){
+
+    }
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        for (IOnAppCreate item: _ionappcreate){
+            item.onCreate(this);
+        }
+    }
+
+    @Override
+    public void onTerminate() {
+        super.onTerminate();
+        for (IOnAppTerminate item: _ionappterminate){
+            item.onTerminate(this);
+        }
+    }
+}

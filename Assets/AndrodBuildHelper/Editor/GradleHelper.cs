@@ -6,12 +6,31 @@ using System.Text;
 using UnityEditor;
 using UnityEditor.Android;
 using UnityEngine;
+public enum GradleType
+{
+    Basic,Main,Luncher
+}
 public static class GradleHelper 
 {
+    static string GetFileName(GradleType type)
+    {
+#if UNITY_2019_3_OR_NEWER
+        if (type == GradleType.Basic)
+            return "baseProjectTemplate";
+        if (type == GradleType.Main)
+            return "mainTemplate";
+        if (type == GradleType.Luncher)
+            return "launcherTemplate";
+        throw new ArgumentException($"unity not support this gradle type {type}");
+#else
+        return "mainTemplate";
+#endif
+    }
     public interface INode
     {
        string GetString();
     }
+    
     public class Value: INode, IEquatable<Value>
     {
         public string str;
@@ -49,6 +68,7 @@ public static class GradleHelper
         static readonly string tab = "     ";
         public string name;
         public string tabs = "";
+        public bool containNewlineCharactersBeforeBeginBrace;
         public Node()
         {
             isRoot = true;
@@ -85,6 +105,10 @@ public static class GradleHelper
             }
             return false;
         }
+        public void AddCanRepeat(INode value)
+        {
+            values.Add(value);
+        }
         public void Add(INode value)
         {
             if (values.Contains(value)) return;
@@ -112,6 +136,11 @@ public static class GradleHelper
             {
                 builder.Append(tabs);
                 builder.Append(name);
+                if (containNewlineCharactersBeforeBeginBrace)
+                {
+                    builder.Append('\n');
+                    builder.Append(tabs);
+                }
                 builder.Append('{');
                 builder.Append('\n');
             }
@@ -119,6 +148,7 @@ public static class GradleHelper
             {
                 if(item is Node n)
                 {
+                    n.containNewlineCharactersBeforeBeginBrace = containNewlineCharactersBeforeBeginBrace;
                     n.tabs = tabs + (isRoot ? "" : tab);
                     //builder.Append(item.GetString());
                 }
@@ -182,6 +212,41 @@ public static class GradleHelper
                 }
             }
             return null;
+        }
+        public List<Value> FindValuesInDeep(string value)
+        {
+            List<Value> vs = new List<Value>();
+            Foreach((v) =>
+            {
+                if(v is Value vv)
+                {
+                    if (vv.str == value)
+                        vs.Add(vv);
+                }
+            });
+            return vs;
+        }
+        public Value FindValueInDeep(string value)
+        {
+            List<Value> vs = FindValuesInDeep(value);
+            if (vs.Count > 0)
+                return vs[0];
+            return null;
+        }
+        public void Foreach(Action<INode> action)
+        {
+            Foreach_Internal(this, action);
+        }
+        void Foreach_Internal(INode n,Action<INode> action)
+        {
+            action?.Invoke(n);
+            if (n is Node node)
+            {
+                foreach (var item in node.values)
+                {
+                    Foreach_Internal(item, action);
+                }
+            }
         }
         public List<Value> GetValues()
         {
@@ -287,11 +352,17 @@ public static class GradleHelper
         }
         void Read(string file)
         {
+            //Debug.Log($"orfion::{file}");
             StringBuilder builder = new StringBuilder();
             Stack<Node> stack = new Stack<Node>();
+            bool pureString = false;
             for (int i = 0; i < file.Length; i++)
             {
-                if (file[i] == '{')
+                if (file[i] == '"')
+                {
+                    pureString = !pureString;
+                }
+                if (!pureString&&file[i] == '{')
                 {
                     var name = builder.ToString().Trim();
                     if(string.IsNullOrEmpty(name))
@@ -310,23 +381,23 @@ public static class GradleHelper
                     stack.Push(node);
                     builder.Clear();
                 }
-                else if (file[i] == '}')
+                else if (!pureString && file[i] == '}')
                 {
                     BuildValue(builder, stack);
                     var n = stack.Pop();
                     if (stack.Count > 0)
                     {
-                        stack.Peek().Add(n);
+                        stack.Peek().AddCanRepeat(n);
                     }
                     else
                     {
-                        root.Add(n);
+                        root.AddCanRepeat(n);
                     }
                 }
                 else
                 {
                     builder.Append(file[i]);
-                    if (file[i] == '\n')
+                    if (i== file.Length-1|| file[i] == '\n')
                     {
                         BuildValue(builder, stack);
                     }
@@ -339,16 +410,17 @@ public static class GradleHelper
             if (builder.Length > 1)
             {
                 var str = builder.ToString().Trim();
+                //Debug.Log($"load valte::{str}");
                 if (!string.IsNullOrEmpty(str))
                 {
                     var v = new Value(str);
                     if (stack.Count > 0)
                     {
-                        stack.Peek().Add(v);
+                        stack.Peek().AddCanRepeat(v);
                     }
                     else
                     {
-                        root.Add(v);
+                        root.AddCanRepeat(v);
                     }
                 }
             }
@@ -376,54 +448,16 @@ public static class GradleHelper
                 node.Add(new Value(packet));
             }
         }
-        //public Node GetNode(string name)
-        //{
-        //    foreach (var item in nodes)
-        //    {
-        //        if(item is Node node)
-        //        {
-        //            if (node.name == name)
-        //                return node;
-        //        }
-        //    }
-        //    return null;
-        //}
-        
-        //public Node FindNode(string path)
-        //{
-        //    string[] splits = path.Split('/');
-        //    if (splits.Length > 0)
-        //    {
-        //        var parent = GetNode(splits[0]);
-        //        if (parent != null)
-        //        {
-        //            for (int i = 1; i < splits.Length; i++)
-        //            {
-        //                if (!parent.TryGetNode(splits[i], out var node))
-        //                    return null;
-        //                parent = node;
-        //            }
-        //        }
-        //        return parent;
-        //    }
-        //    return null;
-        //}
     }
-    
-    //[MenuItem("Test/AA")]
-    //static void AA()
-    //{
-    //    SetImplementation("aa");
-    //    AssetDatabase.Refresh();
-    //}
-    public static Gradle Open()
+    public static Gradle Open(GradleType type = GradleType.Main)
     {
-        string tmpFile = EditorApplication.applicationContentsPath + "/PlaybackEngines/AndroidPlayer/Tools/GradleTemplates/mainTemplate.gradle";
+        string fileName = GetFileName(type);
+        string tmpFile = EditorApplication.applicationContentsPath + $"/PlaybackEngines/AndroidPlayer/Tools/GradleTemplates/{fileName}.gradle";
         string dir = "Assets/Plugins/Android";
         if (!Directory.Exists(dir))
             Directory.CreateDirectory(dir);
-        string[] paths = Directory.GetFiles(dir, "*.gradle", SearchOption.TopDirectoryOnly);
-        string gradlePath = "Assets/Plugins/Android/mainTemplate.gradle";
+        string[] paths = Directory.GetFiles(dir, $"{fileName}.gradle", SearchOption.TopDirectoryOnly);
+        string gradlePath = $"Assets/Plugins/Android/{fileName}.gradle";
         if (paths.Length == 0)
         {
             File.Copy(tmpFile, gradlePath);
@@ -437,35 +471,6 @@ public static class GradleHelper
     public static Gradle Open(string path)
     {
         return new Gradle(path);
-    }
-    public static void SetImplementation(string packet)
-    {
-        string tmpFile = EditorApplication.applicationContentsPath + "/PlaybackEngines/AndroidPlayer/Tools/GradleTemplates/mainTemplate.gradle";
-        string dir = "Assets/Plugins/Android";
-        if (!Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
-        string[] paths = Directory.GetFiles(dir, "*.gradle", SearchOption.TopDirectoryOnly);
-        string gradlePath = "Assets/Plugins/Android/mainTemplate.gradle";
-        if (paths.Length == 0)
-        {
-            File.Copy(tmpFile, gradlePath);
-        }
-        else
-        {
-            gradlePath = paths[0];
-        }
-       
-        string inst = $"implementation '{packet}'\n";
-        string file = File.ReadAllText(gradlePath);
-        if (!file.Contains(inst))
-        {
-            int idx = file.LastIndexOf("**DEPS**}");
-            if (idx > 0)
-            {
-                file = file.Insert(idx, inst);
-                File.WriteAllText(gradlePath, file);
-            }
-        }
     }
     public static void CombineProguard(string txtPath, string mark,string outFloader)
     {

@@ -2,6 +2,8 @@
 using UnityEngine;
 using System.IO;
 using UnityEditor;
+using System;
+
 namespace MiniGameSDK
 {
 	public class IOHelper
@@ -24,6 +26,19 @@ namespace MiniGameSDK
         //        DeleteDirectory(AssetDatabase.GUIDToAssetPath(guid[0]));
         //    }
         //}
+        public static void CopyFileWithReplease(string src,string dest,params KeyValuePair<string,string>[] repleases)
+        {
+            var txt = File.ReadAllText(src);
+            foreach (var item in repleases)
+            {
+                txt = txt.Replace(item.Key, item.Value);
+            }
+            var dir = Path.GetDirectoryName(dest);
+            //Debug.Log(dir);
+            if (!Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            File.WriteAllText(dest, txt);
+        }
         public static void DeleteDirectory(string src)
         {
             if (Directory.Exists(src))
@@ -58,7 +73,7 @@ namespace MiniGameSDK
             DeleteDirectory(dest);
             CopyDirectory(src, dest, false);
         }
-        public static void CopyDirectory(string src, string dest, bool isReplease)
+        public static void CopyDirectory(string src, string dest, bool isReplease=false,Func<string,string> dealFilePath=null)
         {
             if (Directory.Exists(src))
             {
@@ -69,6 +84,8 @@ namespace MiniGameSDK
                     if (item.EndsWith(".meta")) continue;
                     string srcFile = item;
                     string destFile = item.Replace(src, dest);
+                    if (dealFilePath != null)
+                        destFile = dealFilePath(destFile);
                     //Debug.Log($"file from {srcFile} to {destFile}");
                     if (File.Exists(destFile))
                     {

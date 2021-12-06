@@ -9,53 +9,95 @@ namespace MiniGameSDK
 {
     public class JavaHelper
     {
-        static string filePath = AssetDatabase.GUIDToAssetPath("e7cc477c5595c7046ad97114d5969668");//floader Editor/interfaceTemplete;
-        //[MenuItem("java/test")]
-        //static void javaTest()
-        //{
-        //    //string gradlePath = "Assets/Plugins/Android/UnityPlayerActivity.java";
-        //    //File.Delete(gradlePath);
-        //    //OpenUnityActivity();
-        //    string m = "Assets/Demo_Test/TestInter.java";
-        //    RegistJavaInterface(m);
-        //    AssetDatabase.Refresh();
-        //}
+        static string actFilePath = AssetDatabase.GUIDToAssetPath("172408e12aa30ba48ae15b79177a6289");//floader Editor/interfaceTemplete/Activity;
+        static string appFilePath = AssetDatabase.GUIDToAssetPath("131d279d77a4a484cab2baf1a85ce55b");//floader Editor/interfaceTemplete/Application;
+        static readonly string packageName = "com.api.unityactivityinterface";
+        static HashSet<string> appInters;
+        static void LoadTypes()
+        {
+            if (appInters != null) return;
+            appInters = new HashSet<string>();
+            foreach (var item in Directory.GetFiles(appFilePath))
+            {
+                if (item.EndsWith(".meta")) continue;
+                appInters.Add(Path.GetFileNameWithoutExtension(item));
+            }
+        }
         class InterfaceInfo
         {
             public string className;
             public List<string> interfaces=new List<string>();
+            public bool IsApp()
+            {
+                LoadTypes();
+                for (int i = 0; i < interfaces.Count; i++)
+                {
+                    if (appInters.Contains(interfaces[i]))
+                        return true;
+                }
+                return false;
+            }
+        }
+        static GradleHelper.Gradle OpenCustomUnityApplication()
+        {
+            var orgPath = AssetDatabase.GUIDToAssetPath("6bcb17f73c169934c908abe76f1d8174");//Editor/interfaceTemplete/Application/CustomUnityApplication.txt
+            if(!FindOrCopyFile(orgPath, "CustomUnityApplication.java", out var ret))
+            {
+                CopyInterfaces(appFilePath);
+            }
+            SetBuildInfo(ret, "/manifest/application", "CustomUnityApplication", MainManifestType.Luncher);
+            return ret;
+        }
+        static bool FindOrCopyFile(string orgionFilePath,string fileName,out GradleHelper.Gradle gradle)
+        {
+            string tmpFile = orgionFilePath;// EditorApplication.applicationContentsPath + "/PlaybackEngines/AndroidPlayer/Source/com/unity3d/player/UnityPlayerActivity.java";
+            string dir = "Assets/Plugins/Android";
+            if (!Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            string[] paths = Directory.GetFiles(dir, fileName, SearchOption.TopDirectoryOnly);
+            
+            if (paths.Length == 0)
+            {
+                string gradlePath = $"Assets/Plugins/Android/{fileName}";
+                File.Copy(tmpFile, gradlePath);
+                gradle = new GradleHelper.Gradle(gradlePath);
+                return false;
+            }
+            else
+            {
+                //gradlePath = ;
+                gradle = new GradleHelper.Gradle(paths[0]);
+                return true;
+            }
         }
         static GradleHelper.Gradle OpenUnityActivity()
         {
             string tmpFile = EditorApplication.applicationContentsPath + "/PlaybackEngines/AndroidPlayer/Source/com/unity3d/player/UnityPlayerActivity.java";
-            string dir = "Assets/Plugins/Android";
-            if (!Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
-            string[] paths = Directory.GetFiles(dir, "UnityPlayerActivity.java", SearchOption.TopDirectoryOnly);
-            string gradlePath = "Assets/Plugins/Android/UnityPlayerActivity.java";
-            if (paths.Length == 0)
-            {
-                File.Copy(tmpFile, gradlePath);
-            }
-            else
-            {
-                gradlePath = paths[0];
-            }
-            var ret = new GradleHelper.Gradle(gradlePath);
-            if (paths.Length == 0)
+            if (!FindOrCopyFile(tmpFile, "UnityPlayerActivity.java", out var ret))
             {
                 TryBuildFrameCode(ret);
-                CopyInterfaces(filePath);
+                CopyInterfaces(actFilePath);
             }
-            var pkg = ret.Root.GetValues()[0] as GradleHelper.Value;
-            pkg.str = $"package {PlayerSettings.applicationIdentifier};";
-            ret.Save();
+            SetBuildInfo(ret, "/manifest/application/activity", "UnityPlayerActivity");
             return ret;
+        }
+        static void SetBuildInfo(GradleHelper.Gradle javaFile,string nodePath,string javaClassName,MainManifestType type= MainManifestType.Main)
+        {
+            var pkg = javaFile.Root.GetValues()[0] as GradleHelper.Value;
+            pkg.str = $"package {packageName};";
+            javaFile.Save();
+            var xml = XmlHelper.GetAndroidManifest(type);
+            var orgNode = xml.SelectSingleNode(nodePath);
+            var v = $"{packageName}.{javaClassName}";
+            var att = orgNode.Attributes["android:name"];
+            if (att == null)
+                orgNode.CreateAttribute("name", v);
+            else
+                att.Value = v;
+            xml.Save();
         }
         public static void RegistJavaInterface(string path)
         {
-            var javaFile = OpenUnityActivity();
-            var unityFile = javaFile.Root;
             var inteTree = new GradleHelper.Gradle(path).Root;
             string pkg = GetPackage(inteTree);
             if (string.IsNullOrEmpty(pkg))
@@ -63,9 +105,22 @@ namespace MiniGameSDK
                 throw new ArgumentException($"file ::{path} not contain a 'package' line");
             }
             var info = GetInterfaceInfo(inteTree);
+            GradleHelper.Gradle javaFile;
+            string constrStr;
+            if (info.IsApp())
+            {
+                javaFile = OpenCustomUnityApplication();
+                constrStr = "CustomUnityApplication";
+            }
+            else
+            {
+                javaFile = OpenUnityActivity();
+                constrStr = "UnityPlayerActivity";
+            }
+            var unityFile = javaFile.Root;
             unityFile.InsertValue(1, $"import {pkg}.{info.className};");
-            var constr = FindFunc(unityFile.GetNodes()[0], "UnityPlayerActivity");
-            var instName = getInterfaceInstName($"{pkg.Replace('.','_')}_{info.className}");
+            var constr = FindFunc(unityFile.GetNodes()[0], constrStr);
+            var instName = getInterfaceInstName($"{pkg.Replace('.', '_')}_{info.className}");
             constr.AddValue($"{info.className} {instName} = new {info.className}();");
             foreach (var item in info.interfaces)
             {
@@ -74,29 +129,37 @@ namespace MiniGameSDK
             javaFile.Save();
         }
         static Dictionary<string, string> nameToFuncStr;
-        static void LoadInterfaces()
+        static void LoadActivityInterfaces()
         {
             if (nameToFuncStr != null) return;
             nameToFuncStr = new Dictionary<string, string>();
-            foreach (var item in Directory.GetFiles(filePath))
+            foreach (var item in Directory.GetFiles(actFilePath))
             {
                 if (item.Contains(".meta")) continue;
                 var gd = new GradleHelper.Gradle(item);
                 var nd = gd.Root.GetNodes()[0];
                 string name = nd.name.Split(' ')[2];
                 string func = nd.GetValues()[0].str;
-                func = func.Substring(5, func.Length - 5);
+                func = func.Substring(5, func.Length - 5);//remove 'void '
                 int idxLeft = func.IndexOf('(');
                 int idxRight = func.IndexOf(')');
                 if (idxLeft + 1 != idxRight )
                 {
                     var ss = func.Split('(', ' ', ')');
                     StringBuilder builder = new StringBuilder();
-                    builder.Append(ss[0]);
+                    builder.Append(ss[0]);//func name
                     builder.Append('(');
-                    builder.Append(ss[2]);
+                    for (int i = 2; i < ss.Length; i+=2)
+                    {
+                        builder.Append(ss[i]);
+                        
+                        //if (i != ss.Length - 1)
+                        //    builder.Append(',');
+                    }
                     builder.Append(");");
                     func = builder.ToString();
+                    func = func.Replace("activity", "this");
+                    Debug.Log($"func::{func}");
                 }
                 nameToFuncStr.Add(name, func);
             }
@@ -118,7 +181,7 @@ namespace MiniGameSDK
             var unityRoot = unityActivity.Root;
             unityRoot.InsertValue(1, "import com.unity3d.player.UnityPlayer;");
             unityRoot.InsertValue(1, "import java.util.ArrayList;");
-            LoadInterfaces();
+            LoadActivityInterfaces();
             var unityClass = FindUnityActivity(unityRoot);
             if (unityClass == null)
             {
