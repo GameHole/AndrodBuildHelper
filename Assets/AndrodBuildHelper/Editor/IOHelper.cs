@@ -3,6 +3,8 @@ using UnityEngine;
 using System.IO;
 using UnityEditor;
 using System;
+using System.Diagnostics;
+using Microsoft.Win32;
 
 namespace MiniGameSDK
 {
@@ -26,6 +28,42 @@ namespace MiniGameSDK
         //        DeleteDirectory(AssetDatabase.GUIDToAssetPath(guid[0]));
         //    }
         //}
+        public static string GetRarExePath()
+        {
+            using (var reg = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\WinRAR.exe"))
+            {
+                if (reg == null)
+                    return null;
+                return reg.GetValue("").ToString();
+            }
+        }
+        public static void ComprassDirToRar(string srcDir, string destRarFile)
+        {
+            var rarExe = GetRarExePath();
+            if (!string.IsNullOrEmpty(rarExe))
+            {
+                var dir = Path.GetDirectoryName(destRarFile);
+                if (!Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+                using (var process = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = rarExe,
+                        Arguments = $"a -afzip -m0 -ep1 -r \"{destRarFile}\" \"{srcDir}\"",
+                        UseShellExecute = false,
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                        WorkingDirectory = dir,
+                        CreateNoWindow = false,
+                    }
+                })
+                {
+                    process.Start();
+                    process.WaitForExit();
+                    process.Close();
+                }
+            }
+        }
         public static void CopyFileWithReplease(string src,string dest,params KeyValuePair<string,string>[] repleases)
         {
             var txt = File.ReadAllText(src);
