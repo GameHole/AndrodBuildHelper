@@ -81,11 +81,29 @@ namespace MiniGameSDK
             SetBuildInfo(ret, "/manifest/application/activity", "UnityPlayerActivity");
             return ret;
         }
+        static GradleHelper.Value FindPackage(GradleHelper.Gradle javaFile)
+        {
+            return javaFile.Root.FindValue((v) =>
+            {
+                if (!string.IsNullOrEmpty(v.str))
+                {
+                    if (v.str.StartsWith("package"))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            });
+        }
         static void SetBuildInfo(GradleHelper.Gradle javaFile,string nodePath,string javaClassName,MainManifestType type= MainManifestType.Main)
         {
-            var pkg = javaFile.Root.GetValues()[0] as GradleHelper.Value;
-            pkg.str = $"package {packageName};";
-            javaFile.Save();
+            var pkg = FindPackage(javaFile);
+            if (pkg != null)
+            {
+                javaFile.Root.Remove(pkg);
+                javaFile.Root.InsertValue(0, $"package {packageName};");
+                javaFile.Save();
+            }
             var xml = XmlHelper.GetAndroidManifest(type);
             var orgNode = xml.SelectSingleNode(nodePath);
             var v = $"{packageName}.{javaClassName}";
@@ -95,6 +113,13 @@ namespace MiniGameSDK
             else
                 att.Value = v;
             xml.Save();
+        }
+        public static void RegistJavaInterfaceWithReplease(string path,params KeyValuePair<string,string>[] pairs)
+        {
+            string dir = GetAndroidPath();
+            string output = Path.Combine(dir, $"{Path.GetFileNameWithoutExtension(path)}.java");
+            IOHelper.CopyFileWithReplease(path, output, pairs);
+            RegistJavaInterface(output);
         }
         public static void RegistJavaInterface(string path)
         {
@@ -159,21 +184,37 @@ namespace MiniGameSDK
                     builder.Append(");");
                     func = builder.ToString();
                     func = func.Replace("activity", "this");
-                    Debug.Log($"func::{func}");
+                    //Debug.Log($"func::{func}");
                 }
                 nameToFuncStr.Add(name, func);
             }
         }
-        static void CopyInterfaces(string foader)
+        static string GetAndroidPath()
         {
             string dir = "Assets/Plugins/Android";
             if (!Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
+            return dir;
+        }
+        static void CopyInterfaces(string foader)
+        {
+            string dir = GetAndroidPath();
             foreach (var item in Directory.GetFiles(foader))
             {
                 if (item.Contains(".meta")) continue;
                 var name = Path.GetFileNameWithoutExtension(item);
                 File.Copy(item, Path.Combine(dir, $"{name}.java"));
+            }
+        }
+        static void ImportUnityClassImplements(GradleHelper.Node unityClass, GradleHelper.Node root)
+        {
+            string mark = "implements";
+            int idx = unityClass.name.IndexOf(mark);
+            if (idx > 0)
+            {
+                int lastIdx = idx + mark.Length + 1;
+                var interName = unityClass.name.Substring(lastIdx, unityClass.name.Length- lastIdx);
+                root.InsertValue(1, $"import com.unity3d.player.{interName};");
             }
         }
         static void TryBuildFrameCode(GradleHelper.Gradle unityActivity)
@@ -187,6 +228,7 @@ namespace MiniGameSDK
             {
                 throw new ArgumentException("'UnityPlayerActivity' node not found,please check unity version");
             }
+            ImportUnityClassImplements(unityClass, unityRoot);
             foreach (var item in nameToFuncStr)
             {
                 string name = item.Key;

@@ -235,11 +235,33 @@ public static class GradleHelper
         }
         public void Foreach(Action<INode> action)
         {
+            Foreach_Internal(this, (v) =>
+            {
+                action.Invoke(v);
+                return false;
+            });
+        }
+        public void Foreach(Func<INode,bool> action)
+        {
             Foreach_Internal(this, action);
         }
-        void Foreach_Internal(INode n,Action<INode> action)
+        public Value FindValue(Func<Value, bool> compare)
         {
-            action?.Invoke(n);
+            Value res = null;
+            Foreach((v) =>
+            {
+                if((v is Value value)&&compare.Invoke(value))
+                {
+                    res = value;
+                    return true;
+                }
+                return false;
+            });
+            return res;
+        }
+        void Foreach_Internal(INode n,Func<INode,bool> action)
+        {
+            if (action.Invoke(n)) return;
             if (n is Node node)
             {
                 foreach (var item in node.values)
